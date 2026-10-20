@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#123d35">
+<title>Unlucky Parrot Shooter</title>
+<style>
+:root{--cream:#fff5d9;--ink:#17342e;--lime:#d6f36a;--coral:#ff765e}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#123d35;font-family:ui-rounded,"Trebuchet MS",system-ui,sans-serif;color:var(--cream);touch-action:none}
+#app{height:100%;width:100%;display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% 0%,#2c7962 0%,#16483e 58%,#0d302c 100%)}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;z-index:2}
+.brand{font-weight:1000;letter-spacing:.4px;font-size:clamp(15px,3vw,23px);line-height:1.05}.brand span{color:var(--lime)}.tag{font-size:10px;opacity:.8;letter-spacing:1.8px}
+.hud{display:flex;gap:7px}.pill{background:#092b27b8;border:1px solid #ffffff28;border-radius:14px;padding:7px 11px;min-width:68px;text-align:center;font-weight:900;font-size:13px}.pill small{display:block;color:#c8e7d4;font-size:9px;letter-spacing:1.2px}
+#stage{position:relative;flex:1;min-height:0;margin:0 9px 8px;border:2px solid #b6eaa13d;border-radius:23px;overflow:hidden;box-shadow:0 14px 40px #041c1877;background:#8ddf9a}
+canvas{width:100%;height:100%;display:block;touch-action:none}
+#overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(#092c2780,#092c27b8);text-align:center}
+.panel{width:min(420px,100%);padding:24px 20px;border-radius:25px;background:#fff5d9;color:#17342e;box-shadow:0 12px 0 #d7b77a;transform:translateY(-2px)}
+.parrotIcon{font-size:54px;line-height:1.1;filter:drop-shadow(0 4px 0 #e8c77b)}h1{font-size:clamp(26px,6vw,40px);line-height:.95;margin:10px 0 12px;font-weight:1000;letter-spacing:-1.5px}h1 em{font-style:normal;color:#e95745}.desc{font-size:14px;line-height:1.45;margin:0 auto 17px;max-width:300px;color:#48655a}
+button{border:0;cursor:pointer;font:inherit;font-weight:1000;letter-spacing:.5px;border-radius:15px;padding:14px 20px;background:#d6f36a;color:#17342e;box-shadow:0 5px 0 #9ebd40;width:100%;touch-action:manipulation}button:active{transform:translateY(3px);box-shadow:0 2px 0 #9ebd40}.tips{font-size:11px;margin-top:13px;color:#638071}
+footer{padding:0 14px 10px;display:flex;justify-content:space-between;align-items:center;font-size:10px;letter-spacing:1px;color:#c8e7d4}.sound{background:#ffffff16;border:1px solid #ffffff2b;color:white;border-radius:10px;padding:6px 9px;width:auto;font-size:11px;box-shadow:none}
+@media(min-width:700px){#stage{max-width:1000px;width:calc(100% - 30px);margin:0 auto 10px}header,footer{padding-left:max(18px,calc((100% - 970px)/2));padding-right:max(18px,calc((100% - 970px)/2))}}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div><div class="brand">UNLUCKY <span>PARROT</span></div><div class="tag">AIM • SHOOT • OOPS!</div></div>
+  <div class="hud">
+    <div class="pill"><small>SCORE</small><b id="score">0</b></div>
+    <div class="pill"><small>BEST</small><b id="best">0</b></div>
+  </div>
+</header>
+<div id="stage">
+  <canvas id="game" aria-label="Unlucky Parrot Shooter game"></canvas>
+  <div id="overlay">
+    <div class="panel">
+      <div class="parrotIcon">🦜</div>
+      <h1>UNLUCKY<br><em>PARROT!</em></h1>
+      <p class="desc" id="message">Fruit is flying, trouble is coming. Tap targets to pop them — but don't hit the bombs!</p>
+      <button id="play">START SHOOTING</button>
+      <div class="tips">TAP / CLICK TO AIM & SHOOT · AVOID BOMBS 💣</div>
+    </div>
+  </div>
+</div>
+<footer><span>🍍 FRUIT = POINTS · 💣 BOMB = OOPS!</span><button class="sound" id="sound">🔊 SOUND ON</button></footer>
+</div>
+<script>
+(() => {
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d'),stage=document.getElementById('stage');
+const overlay=document.getElementById('overlay'),playBtn=document.getElementById('play'),msg=document.getElementById('message');
+const scoreEl=document.getElementById('score'),bestEl=document.getElementById('best'),soundBtn=document.getElementById('sound');
+let W=800,H=560,dpr=1,playing=false,score=0,best=0,targets=[],particles=[],shots=[],spawn=0,last=0,time=0,level=1,misses=0,soundOn=true,audioCtx=null,parrot={x:0,y:0,w:0,h:0,blink:0};
+try{best=Number(localStorage.getItem('unluckyParrotBest')||0)}catch(e){}bestEl.textContent=best;
+const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function resize(){const r=stage.getBoundingClientRect();dpr=Math.min(devicePixelRatio||1,2);W=Math.max(320,r.width);H=Math.max(360,r.height);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);parrot.x=W*.15;parrot.y=H*.72;parrot.w=Math.min(100,W*.14);parrot.h=parrot.w*1.1}
+window.addEventListener('resize',resize);resize();
+function beep(freq=520,duration=.07,type='sine'){if(!soundOn)return;try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(.07,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+duration);o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+duration)}catch(e){}}
+soundBtn.onclick=()=>{soundOn=!soundOn;soundBtn.textContent=soundOn?'🔊 SOUND ON':'🔇 SOUND OFF';if(soundOn)beep(650)};
+function start(){score=0;level=1;misses=0;targets=[];particles=[];shots=[];spawn=.3;time=0;playing=true;scoreEl.textContent=0;overlay.style.display='none';beep(650,.1);last=performance.now();requestAnimationFrame(loop)}
+playBtn.onclick=start;
+function spawnTarget(){const bomb=Math.random()<Math.min(.19,.1+level*.008);const types=bomb?['bomb']:['watermelon','pineapple','mango','coconut','banana'];const type=types[Math.floor(Math.random()*types.length)];const radius=type==='pineapple'?23: type==='banana'?22:25;targets.push({x:rand(W*.36,W*.95),y:H+radius+8,vx:rand(-28,25),vy:-rand(150,235)-level*8,r:radius,type,bomb,spin:rand(-2,2),a:rand(0,6.28),hit:false})}
+function burst(x,y,color,n=12){for(let i=0;i<n;i++)particles.push({x,y,vx:rand(-150,150),vy:rand(-180,90),life:rand(.3,.7),max:.7,r:rand(2,6),color})}
+function circle(x,y,r,fill,stroke){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.lineWidth=2;ctx.strokeStyle=stroke;ctx.stroke()}}
+function drawBackground(){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#91e7a6');g.addColorStop(1,'#4dbb83');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ // soft clouds
+ ctx.fillStyle='#efffe77c';for(let i=0;i<4;i++){let x=((i*237+time*9)%(W+160))-80,y=H*(.13+(i%3)*.09);circle(x,y,20,'#efffe77c');circle(x+22,y-8,27,'#efffe77c');circle(x+48,y,19,'#efffe77c')}
+ // distant jungle hills
+ ctx.fillStyle='#329d70';ctx.beginPath();ctx.moveTo(0,H*.73);for(let x=0;x<=W+20;x+=20)ctx.lineTo(x,H*.65+Math.sin(x*.012)*28+Math.sin(x*.027)*12);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
+ ctx.fillStyle='#1c7959';ctx.beginPath();ctx.moveTo(0,H*.86);for(let x=0;x<=W+20;x+=20)ctx.lineTo(x,H*.78+Math.sin(x*.014+1)*24);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
+ // leaves on edges
+ for(let i=0;i<8;i++){let x=i%2===0?rand(-12,25):rand(W-25,W+12),y=(i*91+time*5)%(H*.8);ctx.save();ctx.translate(x,y);ctx.rotate(i%2?-.5:.5);ctx.fillStyle=i%2?'#14634e':'#237b53';ctx.beginPath();ctx.ellipse(0,0,13,34,0,0,Math.PI*2);ctx.fill();ctx.restore()}
+}
+function drawParrot(){const x=parrot.x,y=parrot.y,s=parrot.w/100;ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+ // shadow
+ circle(0,43,35,'#164d3c44');
+ // tail feathers
+ ctx.fillStyle='#168e80';ctx.beginPath();ctx.moveTo(-25,14);ctx.lineTo(-65,44);ctx.lineTo(-35,7);ctx.lineTo(-62,-2);ctx.lineTo(-20,-8);ctx.fill();
+ // body
+ ctx.fillStyle='#f45e45';ctx.beginPath();ctx.ellipse(0,0,36,42,-.12,0,Math.PI*2);ctx.fill();
+ // wing
+ ctx.fillStyle='#138f85';ctx.beginPath();ctx.ellipse(-16,5,22,27,-.5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#0c6d68';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-26,-2);ctx.quadraticCurveTo(-11,10,-22,23);ctx.stroke();
+ // yellow chest
+ ctx.fillStyle='#ffd75b';ctx.beginPath();ctx.ellipse(11,16,21,24,-.2,0,Math.PI*2);ctx.fill();
+ // crest
+ ctx.fillStyle='#f56b42';ctx.beginPath();ctx.moveTo(-5,-35);ctx.quadraticCurveTo(-23,-65,-8,-57);ctx.quadraticCurveTo(3,-63,6,-43);ctx.quadraticCurveTo(18,-61,20,-42);ctx.fill();
+ // eyes
+ circle(12,-19,12,'#fff7dc','#6a4234');circle(16,-19,5,'#3d8c65');circle(17,-20,2.3,'#172f2c');circle(31,-15,9,'#fff7dc','#6a4234');circle(34,-15,3.5,'#5da9d5');circle(35,-16,1.8,'#172f2c');
+ // beak
+ ctx.fillStyle='#f6a72e';ctx.beginPath();ctx.moveTo(26,-5);ctx.lineTo(52,2);ctx.quadraticCurveTo(40,20,25,10);ctx.closePath();ctx.fill();ctx.strokeStyle='#a85a2b';ctx.lineWidth=2;ctx.stroke();
+ // feet
+ ctx.strokeStyle='#d58b37';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-9,35);ctx.lineTo(-11,45);ctx.moveTo(8,36);ctx.lineTo(7,45);ctx.stroke();
+ // tiny bandage = unlucky signature
+ ctx.fillStyle='#fff0c9';ctx.save();ctx.translate(-19,-29);ctx.rotate(-.5);ctx.fillRect(-7,-3,15,6);ctx.restore();
+ ctx.restore()}
+function drawTarget(t){ctx.save();ctx.translate(t.x,t.y);ctx.rotate(t.a);
+ const r=t.r;
+ if(t.type==='bomb'){circle(0,0,r,'#303b3a','#172d2b');circle(-7,-7,5,'#657b75');ctx.strokeStyle='#f5c65b';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(6,-r+4);ctx.quadraticCurveTo(18,-r-8,15,-r-15);ctx.stroke();circle(15,-r-15,4,'#ff765e');ctx.fillStyle='#fff0c9';ctx.font='bold 13px system-ui';ctx.textAlign='center';ctx.fillText('!',0,5)}
+ else if(t.type==='watermelon'){circle(0,0,r,'#e94d53','#fff0c9');ctx.strokeStyle='#24895a';ctx.lineWidth=5;for(let a=-1.3;a<1.5;a+=.55){ctx.beginPath();ctx.arc(0,0,r-4,a,a+.23);ctx.stroke()}circle(-7,-4,2,'#2d3b2f');circle(4,3,2,'#2d3b2f');}
+ else if(t.type==='pineapple'){ctx.fillStyle='#f7b93e';ctx.beginPath();ctx.ellipse(0,3,r*.75,r,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#d88729';ctx.lineWidth=2;for(let i=-2;i<=2;i++){ctx.beginPath();ctx.moveTo(i*7,-15);ctx.lineTo(i*7+4,19);ctx.stroke()}ctx.fillStyle='#2b9d62';ctx.beginPath();ctx.moveTo(-7,-r+7);ctx.lineTo(-15,-r-8);ctx.lineTo(-2,-r+1);ctx.lineTo(3,-r-13);ctx.lineTo(8,-r+2);ctx.lineTo(16,-r-5);ctx.lineTo(11,0);ctx.fill()}
+ else if(t.type==='mango'){ctx.fillStyle='#ffad38';ctx.beginPath();ctx.ellipse(0,0,r*.78,r, -.5,0,Math.PI*2);ctx.fill();circle(6,-7,5,'#f76b43');ctx.strokeStyle='#5d813f';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(1,-r+4);ctx.lineTo(8,-r-5);ctx.stroke()}
+ else if(t.type==='coconut'){circle(0,0,r,'#8d5b3c','#65402c');circle(-7,-7,3,'#e4c99a');circle(5,-8,3,'#e4c99a');circle(0,5,3,'#e4c99a')}
+ else {ctx.strokeStyle='#f8d24e';ctx.lineWidth=13;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-15,-8);ctx.quadraticCurveTo(-5,18,15,7);ctx.stroke();circle(15,7,4,'#f6a52e')}
+ // silly face
+ circle(-7,-2,2.5,'#263b31');circle(7,-2,2.5,'#263b31');ctx.strokeStyle='#263b31';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,4,6,.2,Math.PI-.2);ctx.stroke();
+ ctx.restore()}
+function draw(){drawBackground(); // launcher dashed aim guide
+ ctx.save();ctx.setLineDash([5,9]);ctx.strokeStyle='#fff7d99a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(parrot.x+parrot.w*.38,parrot.y);ctx.lineTo(W*.96,H*.22);ctx.stroke();ctx.restore();
+ targets.forEach(drawTarget);shots.forEach(s=>{circle(s.x,s.y,5,'#fff5c7','#e5a94e');circle(s.x,s.y,10,'#fff5c72b')});
+ particles.forEach(p=>{ctx.globalAlpha=clamp(p.life/p.max,0,1);circle(p.x,p.y,p.r,p.color)});ctx.globalAlpha=1;drawParrot();
+ if(playing){ctx.fillStyle='#123d3588';ctx.font='900 12px system-ui';ctx.textAlign='left';ctx.fillText('LEVEL '+level,15,25);ctx.textAlign='right';ctx.fillText('MISS: '+misses+'/5',W-15,25)}
+}
+function gameOver(){playing=false;overlay.style.display='flex';msg.textContent=score>0?`You scored ${score}! Pippo somehow survived… almost. Try again and beat your best!`:'Pippo had a very unlucky day. Try again and make those targets pop!';playBtn.textContent='PLAY AGAIN';beep(130,.3,'sawtooth')}
+function loop(now){if(!playing)return;const dt=Math.min((now-last)/1000,.04);last=now;time+=dt;spawn-=dt;
+ if(spawn<=0){spawnTarget();spawn= Math.max(.38,1.05-level*.055)+Math.random()*.22}
+ targets.forEach(t=>{t.x+=t.vx*dt;t.y+=t.vy*dt;t.a+=t.spin*dt;if(t.x<t.r||t.x>W-t.r)t.vx*=-1});
+ // targets escape bottom
+ targets=targets.filter(t=>{if(t.y<-t.r-20){if(!t.bomb){misses++;if(misses>=5)gameOver()}return false}return true});
+ shots.forEach(s=>{s.x+=s.vx*dt;s.y+=s.vy*dt;s.life-=dt;});
+ shots=shots.filter(s=>s.life>0&&s.x>-20&&s.x<W+20&&s.y>-30&&s.y<H+20);
+ particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=230*dt;p.life-=dt});
+ particles=particles.filter(p=>p.life>0);
+ for(let i=targets.length-1;i>=0;i--){let t=targets[i];for(let j=shots.length-1;j>=0;j--){let s=shots[j];if(Math.hypot(t.x-s.x,t.y-s.y)<t.r+7){shots.splice(j,1);targets.splice(i,1);if(t.bomb){burst(t.x,t.y,'#ff765e',22);beep(95,.25,'sawtooth');misses+=2;if(misses>=5)gameOver()}else{score+=t.type==='pineapple'?15:10;scoreEl.textContent=score;level=1+Math.floor(score/80);burst(t.x,t.y,['#ffd75b','#ff765e','#d6f36a','#fff5d9'][Math.floor(Math.random()*4)]);beep(420+Math.min(score,500),.06);if(score>best){best=score;bestEl.textContent=best;try{localStorage.setItem('unluckyParrotBest',best)}catch(e){}}}break}}}
+ if(playing){draw();requestAnimationFrame(loop)}
+}
+function shoot(e){if(!playing)return;const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left),y=(e.clientY-r.top);const sx=parrot.x+parrot.w*.42,sy=parrot.y-2,dx=x-sx,dy=y-sy,len=Math.hypot(dx,dy)||1;shots.push({x:sx,y:sy,vx:dx/len*650,vy:dy/len*650,life:1.3});beep(780,.035,'triangle');}
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();shoot(e)});
+function idle(){if(!playing){time+=.016;draw();requestAnimationFrame(idle)}}idle();
+})();
+</script>
+</body>
+</html>
